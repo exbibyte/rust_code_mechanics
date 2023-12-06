@@ -1,2 +1,3 @@
 # rust_code_mechanics
-notes for coding mechanics in Rust
+
+[notes](notebook.pdf) for coding mechanics in Rust

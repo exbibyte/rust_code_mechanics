@@ -1,0 +1,367 @@
+\documentclass[8pt]{extarticle}
+ 
+%% \usepackage[fleqn]{amsmath}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amsfonts,amsthm,bm}
+\usepackage{breqn}
+\usepackage{amsmath}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{bbm}
+\usepackage{tikz}
+\usepackage[ruled,vlined,linesnumbered,lined,boxed,commentsnumbered]{algorithm2e}
+\usepackage{siunitx}
+\usepackage{graphicx}
+\usepackage{subcaption}
+%% \usepackage{datetime}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{mathrsfs}
+\usepackage{fancyhdr}
+\usepackage{fancyvrb}
+\usepackage{parskip} %turns off paragraph indent
+\pagestyle{fancy}
+
+\usepackage{xcolor}
+\usepackage{mdframed}
+
+\usepackage[tiny]{titlesec}
+
+\usepackage{hanging}
+
+% \usetikzlibrary{arrows}
+
+\DeclareMathOperator*{\argmin}{argmin}
+\newcommand*{\argminl}{\argmin\limits}
+
+\newcommand{\mathleft}{\@fleqntrue\@mathmargin0pt}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Z}{\mathbb{Z}} 
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\ppartial}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\p}{\partial}
+\newcommand{\te}[1]{\text{#1 }}
+\newcommand{\norm}[1]{\|#1\|}
+
+\setcounter{MaxMatrixCols}{20}
+
+% remove excess vertical space for align equations
+\setlength{\abovedisplayskip}{0pt}
+\setlength{\belowdisplayskip}{0pt}
+\setlength{\abovedisplayshortskip}{0pt}
+\setlength{\belowdisplayshortskip}{0pt}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}{Corollary}[theorem]
+\newtheorem{lemma}[theorem]{Lemma}
+
+\begin {document}
+
+\lhead{Notes - Coding Mechanics in Rust, Yuan Liu}
+  
+\begin{multicols*}{2}
+
+\section{Traits}
+\subsection{Comparing}
+\begin{verbatim}
+use std::cmp::*;
+trait PartialEq<Rhs=Self> {
+  fn eq(&self, other: &Rhs) -> bool;
+  ..
+}
+trait Eq: PartialEq {} //marker trait
+trait PartialOrd<Rhs=Self>: ParitalEq<Rhs> {
+  fn partial_cmp(&self, other: &Rhs)
+    -> Option<Ordering>;
+  ..
+}
+trait Ord: Eq + PartialOrd {
+  fn cmp(&self, other: &Self) -> Ordering;
+  ..
+}
+enum Ordering {
+  Less,
+  Equal,
+  Greater,
+}
+\end{verbatim}
+\subsection{Hashing}
+\begin{verbatim}
+use std::hash::*;
+trait Hasher {
+  fn write(& mut self, bytes: &[u8]) -> ();
+  fn finish(&self) -> u64;
+  ..
+}
+\end{verbatim}
+
+  Sample concrete Hasher:
+  
+  \verb%std::collections::hash_map::DefaultHasher%
+
+\begin{verbatim}
+trait Hash {
+  fn hash<H>(&self, state: & mut H) ->()
+    where H: Hasher;
+}
+\end{verbatim}
+
+  \verb%#[derive(Hash)]% possible on a struct if\\
+  all fields implement Hash trait.
+
+\subsection{Function Pointer}
+Coercible from normal function or closure that does not capture the environment.
+\begin{verbatim}
+fn normal_function(i: usize) -> usize {..}
+let ptr: fn(usize) -> usize = normal_function;
+let clos: fn(usize) -> usize = |x| x + 5;
+\end{verbatim}
+\subsection{Call Operator Traits}
+\begin{verbatim}
+trait FnMut<Args>: FnOnce<Args>;
+trait Fn<Args>: FnMut<Args>;
+\end{verbatim}
+
+  \vfill\null
+  \columnbreak
+
+  \section{Collections}
+\begin{verbatim}
+Vec<T>
+BTreeSet<T> where T: Ord //ascending order
+BTreeMap<K, V> where K: Ord //ascending order
+HashSet<T> where T: Eq + Hash
+HashMap<K, V> where K: Eq + Hash
+impl BinaryHeap<T> where T: Ord { //default: max-heap
+  fn push(item: T);
+  fn pop() -> Option<T>;
+  fn peek() -> Option<&T>;
+  ..
+}
+impl VecDeque<T> {
+  fn pop_back(&mut self) -> Option<T>;
+  fn partition_point(&mut self, f: P) -> usize
+    where P: FnMut(&T) -> bool;
+    //return index of 1st elem of 2nd partition
+    //requires elements to be in order
+    //all elems in 1st partition satisfy f
+  ..
+}
+\end{verbatim}
+For changing order:\\
+Use wrapper \verb%std::cmp::Reverse% NewType, or\\
+Use Custom Ord impl
+
+\subsection{Entry API}
+\begin{verbatim}
+*container.entry(key).or_insert(val) = ..;
+*container.entry(key).or_default() = ..;
+*container.entry(key)
+  .or_insert_with(|| {..; val} ) = ..;
+*container.entry(key)
+  .or_insert_with_key(|key| {..; val} ) = ..;
+\end{verbatim}
+
+  \vfill\null
+  \columnbreak
+  
+\section{Pattern Match / Destructuring}
+
+\begin{verbatim}
+let item = Some(Structure::new());
+match item {
+  Some(Structure { x, y: 0, z: 1 }) => { f() }
+  Some(Structure { z: 2, .. }) => { g() }
+  _ => {}
+}
+match (4, 5, 6) {
+  (4, _, v @ 6) => { f(v) }
+  w @ (5, _, 2) => { g(w) }
+  _ => {}
+}
+let items = (0, 1, 2, 3, 4, 5);
+match items {
+  (first, .., last) => { f() }
+  _ => {}
+}
+match item {
+  Some(x) if x >= 10 && pred(x) => { f() }
+  _ => {}
+}
+match item2 {
+   mybinding @ Structure { x: 5..=10, .. }
+     => { f(mybinding) }
+  _ => {}
+}
+match item2 {
+   Structure { x: mybinding, y: 5..=10, .. }
+     => { f(mybinding, &y) }
+  _ => {}
+}
+match x {
+  Some(val @ 0..=10) => { f(val) }
+  Some(val @ 11..20) => { g(val) }
+  _ => {}
+}
+match x {
+  val @ 0..=10 | val @ 50..=55 => { f(val) }
+  _ => {}
+}
+match Some(x) {
+  Some(4) | Some(5) => { f() }
+  _ => {}
+}
+if let Some(MyStruct {x: 5, y, ..}) = item {
+  ..
+}
+match Some(x) {
+  //borrow instead of consume by a match
+  Some(ref inner) => { f_borrow_only(inner) }
+  _ => {}
+}
+\end{verbatim}
+
+  \vfill\null
+  \columnbreak
+
+\section{Threading}
+See reference for more threading: Rust Atomics and Locks \cite{rustatomicsbook}.
+\begin{verbatim}
+let t = std::thread::spawn(||{..})
+..
+t.join().unwrap();
+\end{verbatim}
+
+\subsection{Mutex and Guards}
+\begin{verbatim}
+use std::sync::{Arc, Mutex};
+let m = Arc::new(Mutex::new(..));
+..
+let m2 = m.clone();
+{
+  let lock_result = m2.lock();
+  let mtx_guard = lock_result.unwrap();
+  //std::ops::DerefMut trait for compile-
+  //time deref coercion rule
+  *mtx_guard = new_value;
+}
+match m.try_lock(){
+  Ok(mut mtx_guard) => {
+    *mtx_guard = new_value;
+  },
+  Err(_) => {}
+}
+\end{verbatim}
+
+\subsection{Scoped Threads}
+\begin{verbatim}
+let mut a = vec![1, 2, 3];
+let mut x = 0;
+std::thread::scope(|s| {
+    s.spawn(|| {
+      f_borrow(&a);
+    });
+    s.spawn(|| {
+      f_borrow_mut(& mut x);
+    });
+    println!("hello from the main thread");
+    //threads spawn in scope joined
+});
+f_modify_some_more(& mut x);
+\end{verbatim}
+
+  \vfill\null
+  \columnbreak
+  
+\section{Interior Mutability}
+\begin{verbatim}
+std:;sync::Mutex<T> / RwLock<T>: Send + Sync
+std::sync::atomic::AtomicI32 / ..: Send + Sync
+std::cell::Cell<T>: !Sync
+std::cell::RefCell<T>: !Sync
+\end{verbatim}
+
+Threadsafe:
+\begin{verbatim}
+std:;sync::Mutex<T> / RwLock<T>}
+std::sync::atomic::AtomicI32 / ..
+\end{verbatim}
+
+Value:
+\begin{verbatim}
+std::sync::atomic::AtomicI32 / ..
+std::cell::Cell<T>
+\end{verbatim}
+
+Reference:
+\begin{verbatim}
+std:;sync::Mutex<T> / RwLock<T>}
+std::cell::RefCell<T>
+\end{verbatim}
+
+
+% \vfill\null
+% \columnbreak
+  
+\section{Managed Memory}
+\begin{verbatim}
+std::rc::Rc<T>: !Send
+std::sync::Arc<T>: Send + Sync
+  where T: Send + Sync
+\end{verbatim}
+
+\subsection{Managed Memory with Interior Mutability}
+
+Single thread:
+\begin{verbatim}
+//infallible value replacement
+std::rc::Rc<std::cell::Cell<T>>
+
+//reference replacement; runtime checking
+std::rc::Rc<std::cell::RefCell<T>> 
+\end{verbatim}
+
+Threadsafe:
+\begin{verbatim}
+//infallible value replacement
+std::sync::Arc<std::sync::atomic::AtomicType>
+
+//reference replacement; runtime checking
+std::sync::Arc<std::sync::Mutex<T>> or
+  std::sync::Arc<std::sync::RwLock<T>>
+\end{verbatim}
+
+\section{Borrow and Reference}
+
+\begin{verbatim}
+impl Option<T> {
+  fn as_mut(&mut self) -> Option<& mut T>;
+  fn as_ref(&self) -> Option<& T>;
+  ..
+}
+\end{verbatim}
+
+TODO: expand this section with:
+
+\verb%std::borrow::Borrow% and\\
+\verb%std::convert::AsRef%
+
+  \section{PhantomData}
+
+\begin{verbatim}
+std::marker::PhantomData<T> where T: ?Sized;
+\end{verbatim}
+  
+  Zero-sized type (compile-time type used by the compiler to reason about safety properties) that owns a \verb%T%.
+
+  Use case: place inside struct to make it conceptually own a \verb%T%.
+
+  \vfill\null
+  \columnbreak
+
+  \bibliographystyle{plain}
+  \bibliography{notebook}
+    
+  \end{multicols*}
+
+\end {document}
