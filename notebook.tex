@@ -20,6 +20,7 @@
 \usepackage{fancyhdr}
 \usepackage{fancyvrb}
 \usepackage{parskip} %turns off paragraph indent
+\usepackage{hyperref}
 \pagestyle{fancy}
 
 \usepackage{xcolor}
@@ -166,6 +167,33 @@ Use Custom Ord impl
   \columnbreak
   
 \section{Pattern Match / Destructuring}
+
+\subsection{Matching ergonomics via default binding modes}
+Summary:\\
+\url{https://rust-lang.github.io/rfcs/2005-match-ergonomics.html}
+
+Related RFC:\\
+\url{https://github.com/rust-lang/rfcs/pull/1944}
+
+\begin{verbatim}
+let x: &Option<_> = &Some(0);
+match x {
+  &Some(ref y) => {..}
+  &Nonde => {..}
+}
+//or:
+match *x {
+  Some(ref y) => {..}
+  Nonde => {..}
+}
+//or:
+match x {
+  Some(y) => {..} //where y is inferred to be a reference
+  Nonde => {..}
+}
+\end{verbatim}
+
+\subsection{Examples}
 
 \begin{verbatim}
 let item = Some(Structure::new());
