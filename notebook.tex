@@ -374,7 +374,7 @@ TODO: expand this section with:
 \verb%std::borrow::Borrow% and\\
 \verb%std::convert::AsRef%
 
-  \section{PhantomData}
+\section{PhantomData}
 
 \begin{verbatim}
 std::marker::PhantomData<T> where T: ?Sized;
@@ -384,6 +384,97 @@ std::marker::PhantomData<T> where T: ?Sized;
 
   Use case: place inside struct to make it conceptually own a \verb%T%.
 
+
+  \section{Pinning}
+
+  for address-sensitive type
+
+  goals:
+  \begin{itemize}
+  \item reduced surface area of interface: not expose interface that can invalidate data once data is pinned
+  \item make sure pinned value remain valid before drop and drop happens before invalidation
+  \end{itemize}
+
+  \verb%Pin<T>% $\implies$ \verb%T: Deref / DerefMut% where \verb%Deref::Target% or \verb%DerefMut::Target% cannot be moved/copied
+
+  \verb%Pin<T>% can be moved
+
+  Pin projections: give out fields of a pinned type
+
+  \verb%Unpin% is auto trait by default
+
+  need to opt-out of \verb%Unpin% for a type that needs to be pinned, eg: use \verb%std::marker::PhantomPinned% to the structure to opt-out
+
+  once pinned, the structure is in an address-sensitive state
+
+  pinning an \verb%Unpin% structure negates effects of pinning
+   
+  \subsection{Drop for Pinned Data}
+  to guarantee validity of pinned data from the point of pinning the data to right before invalidation happens, drop needs to happen before invalidation
+  
+  drop notifys and performs ops related to dependent values before content is overwritten
+
+  eg: \verb%ManuallyDrop<T>% inhibits destructor of type \verb%T%, therefore it voilates drop guarantees of \verb%Pin<& mut T>% if we create pinned structure from mutable reference to \verb%T%  within \verb%ManuallyDrop<T>%
+
+  note: if storage is never re-used/invalidated from intentionally leaking memory, such as from \verb%mem::forget(..)%, then drop does not require to be run (drop guarantee is trivially satisfied since invalidation never happens)
+  
+  \verb%fn drop(&mut self){..}%:
+  
+  implicitly needs to be treated as
+\begin{verbatim}
+fn drop( self: Pin<& mut Self>) {..}
+\end{verbatim}
+
+  utility:
+\begin{verbatim}
+Pin::new_unchecked(& mut T) -> Pin<& mut T>
+\end{verbatim}
+
+  inner drop function to manipulate it without conflicting pinning invariants
+
+  \subsubsection{Drop for pointer types that will be used as pinning pointers}
+  
+  \begin{itemize}
+  \item ensure not to invalidate or move pointed data during \verb%Drop% implementation, likewise for \verb%Deref/DerefMut% implementations
+  \item careful specialized implementation of assign to pinned value is possible, eg: update all uses of pinnin gaddresses to ensure pinning invariant is held
+  \item note: \verb%Pin::set()% to assign thru \verb%Pin<Ptr\% possible as well: drop will run before assigning new value
+  \end{itemize}
+
+  \subsection{Structural Pinning}
+  Definition:\\
+  structure is pinned $\implies$ some inner member/field of structure is pinned
+
+  exposing non-structurally pinned field of a \verb%Pin<& mut T>%:
+\begin{verbatim}
+Pin<& mut T>::map_unchecked_mut(|x| &mut x.field)
+   -> & mut Field
+\end{verbatim}
+  or
+\begin{verbatim}
+Pin<& mut T>::get_unchecked_mut() -> & mut T
+...
+\end{verbatim}
+
+  deduction for \verb%Unpin% trait for a structure:\\
+  all if the its structurally pinned fields are \verb%Unpin% $\implies$ structure can have \verb%Unpin%
+
+  make sure that interface does not move data out of pinned fields when structure has already been pinned
+
+  in general standard library pointer types do not have structural pinning:
+
+  eg: \verb%Box<T>: Unpin%, even if \verb%T: Pin%, then:
+
+  \verb%Pin<Box<T>>: Unpin% since pointers can be moved while pointed data remains valid. Content is pinned or unpinned is independent of whether pointer is pinned $\iff$ pinning is not structural
+  
+  
+  \subsubsection{Pinning Destruction}
+  \begin{itemize}
+  \item we assume structure and its fields may be pinned, so need to take \verb%Pin<& mut Self>% during \verb%drop%
+  \item struct cannot be \verb%#[repr(packed)]%
+  \item pinned fields must be dropped before invalidating/reassigning data
+  \end{itemize}
+
+  
   \vfill\null
   \columnbreak
 
